@@ -1,0 +1,33 @@
+//meunu
+//Network Settings > Connected/Disconnected
+//Wifi - On/Off
+//FTP Server - On/Off
+//FTP string: ftp://pragview:1234@192.168.54.1:21/
+//Connect to > Pragview
+//IP address > 192.168.54.1
+
+//Clock Settings
+//Display Clock
+//Sync Clock
+//Set Timezone - CET
+
+//Device Settings
+//Set Photo Change Interval
+//Display Timeout
+//Enable Light Sensor
+//Set Dark Light intensity
+//Enable Tilt sensor
+//Display only Portait on tilted screen and viceversa
+//Clear storage
+//Storage capacity: 10GB/16GB Used
+
+//Cloud Photos Settings
+//Select photo source - SD/Google photos
+//Current Gphotos ID: 
+//Current Gphotos Album Selected:
+
+//firmware update
+
+//about
+// Default wifi: Pragview
+// configfile: config.ini
