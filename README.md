@@ -112,10 +112,6 @@ Cloud Photos Settings:
 Firmware Update
 About
 
-yaml
-Copy
-Edit
-
 ---
 
 ## How to Upload Photos
@@ -123,7 +119,11 @@ Edit
 1. Connect Pragview to Wi-Fi.  
 2. Use the FTP details to upload images:  
    `ftp://pragview:1234@192.168.54.1:21/`  
-3. Or use the provided PC script for automated upload.
+Or use the provided PC script for automated upload. 
+1. Turn on ftp in device
+2. Copy JPEG image files to code/win/src
+3. Run code/win/main.bat 
+4. Enter Ip address of device 
 
 ---
 
