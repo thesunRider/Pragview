@@ -12,6 +12,7 @@
 #include "OpenMenuOS.h"
 #include <SimpleTimer.h>
 #include "WatchedVar.h"
+#include "ESP32OTAPull.h"
 
 //meunu
 // Static: Network - Connected/Disconnected
@@ -31,7 +32,8 @@
 //Clear storage
 //Storage capacity: 10GB/16GB Used
 //about
-
+#define JSON_URL "https://example.com/myimages/Basic-OTA-Example.json"  // this is where you'll post your JSON filter file
+String version = "1.2";
 
 // Touchscreen pins
 #define XPT2046_IRQ 21   // T_IRQ
@@ -133,10 +135,11 @@ float average_intensity;
 bool light_sensor_enabled = true;
 bool titl_sensor_enabled = true;
 int dip_timeout;
-int light_sensor_theshold_percent = ((1-(DARK_LIGHT_INTENSITY/4096)) * 100);
+int light_sensor_theshold_percent = ((1 - (DARK_LIGHT_INTENSITY / 4096)) * 100);
 String storage_string;
 File entry_jpeg;
 String filename;
+ESP32OTAPull ota;
 
 void back_tohome();
 void showAbout();
@@ -154,46 +157,86 @@ void clock_sync();
 void clean_storage();
 void dark_intensity_sample();
 void ota_update();
+void ota_callback(int offset, int totallength);
+const char *errtext(int code);
 
 WatchedVar wifi_power_settings(WiFi.getMode() == WIFI_OFF, switch_wifi);
 WatchedVar ftp_server_settings(0, ftp_server_change);
 WatchedVar light_intensity_settings(0, ftp_server_change);
 
-void ota_update(){
-  
+
+void ota_callback(int offset, int totallength) {
+  Serial.printf("Updating %d of %d (%02d%%)...\n", offset, totallength, 100 * offset / totallength);
+  static int status = LOW;
+  status = status == LOW && offset < totallength ? HIGH : LOW;
+  digitalWrite(LED_PIN, status);
 }
 
-void dark_intensity_sample(){
-    PopupConfig config;
-    config.message = "Turn of all lights for 10 seconds ...";
-    config.title = "Sampling Dark light";
-    config.type = PopupType::INFO;
-    config.autoClose = true;
-    config.autoCloseDelay = 10000;  // 5 seconds
-    config.showButtons = false;
-    config.showCancelButton = false;
-    PopupResult result = PopupManager::show(config);
-    PopupResult popupResult = PopupManager::update();
+const char *errtext(int code) {
+  switch (code) {
+    case ESP32OTAPull::UPDATE_AVAILABLE:
+      return "An update is available but wasn't installed";
+    case ESP32OTAPull::NO_UPDATE_PROFILE_FOUND:
+      return "No profile matches";
+    case ESP32OTAPull::NO_UPDATE_AVAILABLE:
+      return "Profile matched, but update not applicable";
+    case ESP32OTAPull::UPDATE_OK:
+      return "An update was done, but no reboot";
+    case ESP32OTAPull::HTTP_FAILED:
+      return "HTTP GET failure";
+    case ESP32OTAPull::WRITE_ERROR:
+      return "Write error";
+    case ESP32OTAPull::JSON_PROBLEM:
+      return "Invalid JSON";
+    case ESP32OTAPull::OTA_UPDATE_FAIL:
+      return "Update fail (no OTA partition?)";
+    default:
+      if (code > 0)
+        return "Unexpected HTTP response code";
+      break;
+  }
+  return "Unknown error";
+}
+
+
+void ota_update() {
+  if (WiFi.status() == WL_CONNECTED) {
+    int ret = ota.CheckForOTAUpdate(JSON_URL, version.c_str());
+    Serial.printf("CheckForOTAUpdate returned %d (%s)\n\n", ret, errtext(ret));
+  }
+}
+
+void dark_intensity_sample() {
+  PopupConfig config;
+  config.message = "Turn of all lights for 10 seconds ...";
+  config.title = "Sampling Dark light";
+  config.type = PopupType::INFO;
+  config.autoClose = true;
+  config.autoCloseDelay = 10000;  // 5 seconds
+  config.showButtons = false;
+  config.showCancelButton = false;
+  PopupResult result = PopupManager::show(config);
+  PopupResult popupResult = PopupManager::update();
 
 
   int sampled_brightness = 0;
-  for (int i = 0; i < 10;i++){
+  for (int i = 0; i < 10; i++) {
     sampled_brightness += analogRead(LIGHT_SENS);
     PopupManager::update();
     menu.loop();
     delay(1000);
   }
-  DARK_LIGHT_INTENSITY = sampled_brightness/10;
-  light_sensor_theshold_percent =  (( (4096-DARK_LIGHT_INTENSITY)/41) );
-  Serial.printf("New intensity: %d %d \n",light_sensor_theshold_percent,DARK_LIGHT_INTENSITY);
-  SET_devicescreen.getelement(uid_dark_intensity)->rangeValue =  light_sensor_theshold_percent;
+  DARK_LIGHT_INTENSITY = sampled_brightness / 10;
+  light_sensor_theshold_percent = (((4096 - DARK_LIGHT_INTENSITY) / 41));
+  Serial.printf("New intensity: %d %d \n", light_sensor_theshold_percent, DARK_LIGHT_INTENSITY);
+  SET_devicescreen.getelement(uid_dark_intensity)->rangeValue = light_sensor_theshold_percent;
   menu.loop();
 }
 
 bool listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
-  int jpeg_w,jpeg_h;
+  int jpeg_w, jpeg_h;
 
-  while(true){
+  while (true) {
     entry_jpeg = root.openNextFile();
     if (!entry_jpeg) { break; }
 
@@ -204,16 +247,15 @@ bool listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
     filename.toLowerCase();
     if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) {
       Serial.println(entry_jpeg.name());  // Only JPEG files
-      jpegsize(filename.c_str(),&jpeg_w,&jpeg_h);
-      if(SET_devicescreen.getSettingValue("Display only Portrait on Tilt")){
-        if(jpeg_w > jpeg_h && DISPLAY_ORIENTATION == DISPLAY_PORTRAIT){
+      jpegsize(filename.c_str(), &jpeg_w, &jpeg_h);
+      if (SET_devicescreen.getSettingValue("Display only Portrait on Tilt")) {
+        if (jpeg_w > jpeg_h && DISPLAY_ORIENTATION == DISPLAY_PORTRAIT) {
           continue;
         }
 
-        if(jpeg_w < jpeg_h && DISPLAY_ORIENTATION == DISPLAY_LANDSCAPE){
+        if (jpeg_w < jpeg_h && DISPLAY_ORIENTATION == DISPLAY_LANDSCAPE) {
           continue;
         }
-
       }
 
       return true;
@@ -223,7 +265,7 @@ bool listDir(fs::FS &fs, const char *dirname, uint8_t levels) {
   return false;
 }
 
-void clean_storage(){
+void clean_storage() {
 }
 
 void clock_sync() {
@@ -238,7 +280,7 @@ void clock_sync() {
     config.showCancelButton = false;
     PopupResult result = PopupManager::show(config);
     PopupResult popupResult = PopupManager::update();
-  }else{
+  } else {
     PopupConfig config;
     config.message = "Couldnt connect to any networks ...";
     config.title = "Conneciton Failure";
@@ -263,7 +305,8 @@ void back_tohome() {
 }
 
 void showAbout() {
-  PopupManager::showInfo("Pragview v1.2 -  Digital Photoframe , by Surya for Pragati Mali.. ", "About");
+  String info_out = "Pragview v" + version + " -  Digital Photoframe , by Surya for Pragati Mali.. ";
+  PopupManager::showInfo(info_out.c_str(), "About");
 }
 
 void switch_wifi(int val) {
@@ -335,8 +378,8 @@ void ftp_server_change(int v) {
     tft.setTextSize(1);
     tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 35, 87, 2);
     String wifip = WiFi.localIP().toString();
-    wifip.replace(" ",".");
-    String ftpstr = "ftp://pragview:1234@" + wifip  + ":21/ ";
+    wifip.replace(" ", ".");
+    String ftpstr = "ftp://pragview:1234@" + wifip + ":21/ ";
     Serial.println(ftpstr);
     tft.print(ftpstr.c_str());
   }
@@ -396,13 +439,14 @@ void setup() {
   tft.print("Pragview ");
   tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 155 : 215, 70, 2);
   tft.setTextSize(1);
-  tft.print("v1.2");
+  tft.print("v");
+  tft.print(version);
   tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 50 : 110, 93, 2);
   tft.print("From Surya by Pragati ..");
   delay(1000);
   digitalWrite(TFT_BL, HIGH);  //start displaying stuff
   mount_sdcard();
-  
+
   TOUCH1.setDebounceTime(50);
   TOUCH2.setDebounceTime(50);
   TILT_SNS.setDebounceTime(50);
@@ -413,6 +457,8 @@ void setup() {
   root = SD.open("/");
   root.rewindDirectory();
   filename.reserve(130);
+
+  ota.SetCallback(ota_callback);
   delay(100);
 }
 
@@ -441,21 +487,21 @@ void intialize_menu() {
   mainMenu.addItem("Device Settings", &SET_devicescreen);
   mainMenu.addItem("Cloud Photos Settings", &SET_cloudscreen);
 
-  SET_devicescreen.addRangeSetting("Photo Duration",1,30,5,"s");
-  SET_devicescreen.addBooleanSetting("Enable Display Timeout",dip_timeout);
-  SET_devicescreen.addRangeSetting("Display Timeout",1,30,5,"s");
-  SET_devicescreen.addBooleanSetting("Enable Light sensor",light_sensor_enabled);
-  SET_devicescreen.addSubscreenSetting("Autosample Dark Intensity",nullptr, dark_intensity_sample);
-  uid_dark_intensity = SET_devicescreen.addRangeSetting("Dark Intensity",1,100,20,"%");
-  Serial.printf("Token for Intensity %d \n",uid_dark_intensity);
-  SET_devicescreen.addBooleanSetting("Enable Tilt sensor",true);
-  SET_devicescreen.addBooleanSetting("Display only Portrait on Tilt",titl_sensor_enabled);
+  SET_devicescreen.addRangeSetting("Photo Duration", 1, 30, 5, "s");
+  SET_devicescreen.addBooleanSetting("Enable Display Timeout", dip_timeout);
+  SET_devicescreen.addRangeSetting("Display Timeout", 1, 30, 5, "s");
+  SET_devicescreen.addBooleanSetting("Enable Light sensor", light_sensor_enabled);
+  SET_devicescreen.addSubscreenSetting("Autosample Dark Intensity", nullptr, dark_intensity_sample);
+  uid_dark_intensity = SET_devicescreen.addRangeSetting("Dark Intensity", 1, 100, 20, "%");
+  Serial.printf("Token for Intensity %d \n", uid_dark_intensity);
+  SET_devicescreen.addBooleanSetting("Enable Tilt sensor", true);
+  SET_devicescreen.addBooleanSetting("Display only Portrait on Tilt", titl_sensor_enabled);
   SET_devicescreen.addSubscreenSetting("Clear Storage", nullptr, clean_storage);
   SET_devicescreen.addSubscreenSetting("back", nullptr, back_screen);
 
-  int totalBytes = SD.totalBytes() / (1024 * 1024 );
-  int usedBytes = SD.usedBytes() / (1024 * 1024 );
-  storage_string = "Storage " + String(usedBytes) + "/" + String(totalBytes) +" MB";
+  int totalBytes = SD.totalBytes() / (1024 * 1024);
+  int usedBytes = SD.usedBytes() / (1024 * 1024);
+  storage_string = "Storage " + String(usedBytes) + "/" + String(totalBytes) + " MB";
   Serial.println(storage_string);
   mainMenu.addItem("Update Fimrware", nullptr, ota_update);  //link to firmware update
   mainMenu.addItem("About", nullptr, showAbout);
@@ -573,11 +619,10 @@ void update_displayorientation() {
 void image_slideshow() {
   update_displayorientation();
   tft.fillScreen(TFT_BLACK);
-  if(!listDir(SD, "/", 0))
-    {
-      root.rewindDirectory();
-      listDir(SD, "/", 0);
-    }
+  if (!listDir(SD, "/", 0)) {
+    root.rewindDirectory();
+    listDir(SD, "/", 0);
+  }
   if (filename.length() > 0)
     jpegDraw(filename.c_str(), jpegDrawCallback, true, 0, 0, DISPLAY_ORIENTATION == DISPLAY_LANDSCAPE ? TFT_HEIGHT : TFT_WIDTH, DISPLAY_ORIENTATION == DISPLAY_LANDSCAPE ? TFT_WIDTH : TFT_HEIGHT, true, false);
 }
@@ -595,7 +640,7 @@ void loop() {
   TOUCH2.loop();
   TILT_SNS.loop();
 
-  if (TOUCH1.getState() || TOUCH2.getState() ) {
+  if (TOUCH1.getState() || TOUCH2.getState()) {
     average_intensity = 0;
     digitalWrite(TFT_BL, HIGH);
   }
@@ -605,7 +650,7 @@ void loop() {
     Serial.println("Exited menu");
     return_home = false;
     browsing_menu = false;
-    slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") *1000);
+    slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") * 1000);
     ftp_server_settings.set(SET_networkscreen.getSettingValue("FTP Server:"));
     image_slideshow();
   }
@@ -633,6 +678,31 @@ void loop() {
       if (slideshow_tmr.isReady() || TOUCH2.isPressed()) {
         image_slideshow();
         slideshow_tmr.reset();
+
+        if (SET_clockscreen.getSettingValue("Display Clock")) {
+          
+            if (!getLocalTime(&timeinfo)) {
+              Serial.println("Failed to obtain time");
+            }
+            int hours = timeinfo.tm_hour;
+            int minutes = timeinfo.tm_min;
+            int seconds = timeinfo.tm_sec;
+            tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40, 50, 2);
+            tft.setTextSize(1);
+            int xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40;
+            int ypos = 50;
+            tft.setTextColor(TFT_WHITE);
+            if (hours < 10) xpos += tft.drawChar('0', xpos, ypos, 6); // Add hours leading zero for 24 hr clock
+            xpos += tft.drawNumber(hours, xpos, ypos, 6);
+            xpos += tft.drawChar(':', xpos, ypos - 6, 6);
+            if (minutes < 10) xpos += tft.drawChar('0', xpos, ypos, 6); // Add minutes leading zero
+            xpos += tft.drawNumber(minutes, xpos, ypos, 6);
+            xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 25 : 45;
+            xpos += tft.drawNumber(timeinfo.tm_mday, xpos, ypos+50, 4);
+            xpos += tft.drawChar('/', xpos, ypos+50, 4);
+            xpos += tft.drawNumber(timeinfo.tm_mon, xpos, ypos+50, 4);
+           
+        }
       }
 
       if (light_sensor_enabled) {
@@ -641,9 +711,9 @@ void loop() {
           average_intensity += (analogRead(LIGHT_SENS));
           if (intensity_count > LIGHT_DURATION) {
             Serial.printf("Average light intensity : %f \n", average_intensity / intensity_count);
-            if ( ((average_intensity / intensity_count)) > DARK_LIGHT_INTENSITY) {
+            if (((average_intensity / intensity_count)) > DARK_LIGHT_INTENSITY) {
               //its dark
-              
+
               Serial.println("Its dark,BL OFF");
               digitalWrite(TFT_BL, LOW);
             } else {
@@ -651,7 +721,7 @@ void loop() {
               Serial.println("Its Light,BL ON");
               digitalWrite(TFT_BL, HIGH);
             }
-            Serial.printf("Intensity: %d \n",average_intensity);
+            Serial.printf("Intensity: %d \n", average_intensity);
             intensity_count = 0;
             average_intensity = 0;
           }
@@ -661,27 +731,7 @@ void loop() {
     }
   }
 
-  if (SET_clockscreen.getSettingValue("Display Clock") && !browsing_menu) {
-    if (clock_tmr.isReady()) {
-      if (!getLocalTime(&timeinfo)) {
-        Serial.println("Failed to obtain time");
-      }
-      int hours = timeinfo.tm_hour;
-      int minutes = timeinfo.tm_min;
-      int seconds = timeinfo.tm_sec;
-      tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40, 50, 2);
-      tft.setTextSize(1);
-      int xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40;
-      int ypos = 50;
-      tft.setTextColor(TFT_WHITE);
-      xpos += tft.drawNumber(hours, xpos, ypos, 6);
-      xpos += tft.drawChar(':', xpos, ypos - 6, 6);
-      xpos += tft.drawNumber(minutes, xpos, ypos, 6);
-      xpos += tft.drawChar(':', xpos, ypos - 6, 6);
-      xpos += tft.drawNumber(seconds, xpos, ypos, 6);
-      clock_tmr.reset();
-    }
-  }
+
 
   if (touchscreen.tirqTouched()) {
     if (touchscreen.touched()) {
