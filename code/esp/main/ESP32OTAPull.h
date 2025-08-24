@@ -29,6 +29,7 @@ SOFTWARE.
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <WiFiClientSecure.h>
 #include <WiFi.h>
 
 class ESP32OTAPull {
@@ -59,13 +60,18 @@ private:
 
 
   bool httpGetFollowRedirects(HTTPClient *http,String url) {
-  
+    WiFiClientSecure client; 
+  client.setInsecure();  // Allow self-signed certificates (optional)
+
     const int maxRedirects = 10;
     int redirectCount = 0;
 
     while (redirectCount < maxRedirects) {
-      
-        http->begin(url);
+       if (url.startsWith("https")) {
+      http->begin(client, url);
+    } else {
+      http->begin(url);
+    }
       
 
       int httpCode = http->GET();
