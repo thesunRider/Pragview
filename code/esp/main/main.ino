@@ -688,7 +688,6 @@ void loop() {
     return_home = false;
     browsing_menu = false;
     slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") * 1000);
-    ftp_server_settings.set(SET_networkscreen.getSettingValue("FTP Server:"));
     image_slideshow();
   }
 
