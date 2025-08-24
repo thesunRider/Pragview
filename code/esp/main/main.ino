@@ -161,7 +161,6 @@ void ota_callback(int offset, int totallength);
 const char *errtext(int code);
 
 WatchedVar wifi_power_settings(WiFi.getMode() == WIFI_OFF, switch_wifi);
-WatchedVar ftp_server_settings(0, ftp_server_change);
 WatchedVar light_intensity_settings(0, ftp_server_change);
 
 
@@ -684,6 +683,7 @@ void loop() {
 
   if (return_home) {
     //just exited menu
+    ftp_server_change(0);
     Serial.println("Exited menu");
     return_home = false;
     browsing_menu = false;
