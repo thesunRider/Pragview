@@ -32,8 +32,8 @@
 //Clear storage
 //Storage capacity: 10GB/16GB Used
 //about
-#define JSON_URL "https://example.com/myimages/Basic-OTA-Example.json"  // this is where you'll post your JSON filter file
-String version = "1.2";
+#define JSON_URL "https://github.com/thesunRider/Pragview/releases/download/binary_release/config.json"  // this is where you'll post your JSON filter file
+String version = "1.2.0";
 
 // Touchscreen pins
 #define XPT2046_IRQ 21   // T_IRQ
@@ -201,8 +201,45 @@ const char *errtext(int code) {
 
 void ota_update() {
   if (WiFi.status() == WL_CONNECTED) {
-    int ret = ota.CheckForOTAUpdate(JSON_URL, version.c_str());
+    PopupConfig config;
+    config.message = "Checking and Installing Update ...";
+    config.title = "Starting OTA";
+    config.type = PopupType::INFO;
+    config.autoClose = true;
+    config.autoCloseDelay = 1000;  // 5 seconds
+    config.showButtons = false;
+    config.showCancelButton = false;
+    PopupResult result = PopupManager::show(config);
+    PopupResult popupResult = PopupManager::update();
+    menu.loop();
+
+    int ret = ota.CheckForOTAUpdate(JSON_URL, version.c_str(),ESP32OTAPull::UPDATE_AND_BOOT);
     Serial.printf("CheckForOTAUpdate returned %d (%s)\n\n", ret, errtext(ret));
+
+    config.message = errtext(ret);
+    config.title = "OTA Update Error";
+    config.type = PopupType::ERROR;
+    config.autoClose = true;
+    config.autoCloseDelay = 5000;  // 5 seconds
+    config.showButtons = false;
+    config.showCancelButton = false;
+    result = PopupManager::show(config);
+    popupResult = PopupManager::update();
+    menu.loop();
+
+
+  } else {
+    PopupConfig config;
+    config.message = "Not connected to network ...";
+    config.title = "Connection Failure";
+    config.type = PopupType::ERROR;
+    config.autoClose = true;
+    config.autoCloseDelay = 3000;  // 5 seconds
+    config.showButtons = false;
+    config.showCancelButton = false;
+    PopupResult result = PopupManager::show(config);
+    PopupResult popupResult = PopupManager::update();
+    menu.loop();
   }
 }
 
@@ -680,28 +717,27 @@ void loop() {
         slideshow_tmr.reset();
 
         if (SET_clockscreen.getSettingValue("Display Clock")) {
-          
-            if (!getLocalTime(&timeinfo)) {
-              Serial.println("Failed to obtain time");
-            }
-            int hours = timeinfo.tm_hour;
-            int minutes = timeinfo.tm_min;
-            int seconds = timeinfo.tm_sec;
-            tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40, 50, 2);
-            tft.setTextSize(1);
-            int xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40;
-            int ypos = 50;
-            tft.setTextColor(TFT_WHITE);
-            if (hours < 10) xpos += tft.drawChar('0', xpos, ypos, 6); // Add hours leading zero for 24 hr clock
-            xpos += tft.drawNumber(hours, xpos, ypos, 6);
-            xpos += tft.drawChar(':', xpos, ypos - 6, 6);
-            if (minutes < 10) xpos += tft.drawChar('0', xpos, ypos, 6); // Add minutes leading zero
-            xpos += tft.drawNumber(minutes, xpos, ypos, 6);
-            xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 25 : 45;
-            xpos += tft.drawNumber(timeinfo.tm_mday, xpos, ypos+50, 4);
-            xpos += tft.drawChar('/', xpos, ypos+50, 4);
-            xpos += tft.drawNumber(timeinfo.tm_mon, xpos, ypos+50, 4);
-           
+
+          if (!getLocalTime(&timeinfo)) {
+            Serial.println("Failed to obtain time");
+          }
+          int hours = timeinfo.tm_hour;
+          int minutes = timeinfo.tm_min;
+          int seconds = timeinfo.tm_sec;
+          tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40, 50, 2);
+          tft.setTextSize(1);
+          int xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40;
+          int ypos = 50;
+          tft.setTextColor(TFT_WHITE);
+          if (hours < 10) xpos += tft.drawChar('0', xpos, ypos, 6);  // Add hours leading zero for 24 hr clock
+          xpos += tft.drawNumber(hours, xpos, ypos, 6);
+          xpos += tft.drawChar(':', xpos, ypos - 6, 6);
+          if (minutes < 10) xpos += tft.drawChar('0', xpos, ypos, 6);  // Add minutes leading zero
+          xpos += tft.drawNumber(minutes, xpos, ypos, 6);
+          xpos = DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 25 : 45;
+          xpos += tft.drawNumber(timeinfo.tm_mday, xpos, ypos + 50, 4);
+          xpos += tft.drawChar('/', xpos, ypos + 50, 4);
+          xpos += tft.drawNumber(timeinfo.tm_mon, xpos, ypos + 50, 4);
         }
       }
 
@@ -711,7 +747,7 @@ void loop() {
           average_intensity += (analogRead(LIGHT_SENS));
           if (intensity_count > LIGHT_DURATION) {
             Serial.printf("Average light intensity : %f \n", average_intensity / intensity_count);
-            if (((average_intensity / intensity_count)) > DARK_LIGHT_INTENSITY) {
+            if (((average_intensity / intensity_count)) > DARK_LIGHT_INTENSITY - 50) {
               //its dark
 
               Serial.println("Its dark,BL OFF");
