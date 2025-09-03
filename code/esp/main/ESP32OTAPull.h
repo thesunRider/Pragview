@@ -64,8 +64,8 @@ private:
   WiFiClientSecure *client;
 
   HttpResult followRedirects(WiFiClientSecure *client, String url, int maxRedirects) {
-    client->flush();
-    client->stop();
+   client->flush();
+   client->stop();
     HttpResult result = { 0, 0 };
 
     for (int i = 0; i < maxRedirects; i++) {
@@ -121,10 +121,7 @@ private:
       result.contentLength = contentLength;
 
       // Print body (stream)
-      Serial.println("Body:");
-      while (client->available()) {
-        Serial.write(client->read());
-      }
+      Serial.println("Fin main :");
 
       break;
     }
@@ -149,9 +146,11 @@ private:
     return statusLine.substring(firstSpace + 1, secondSpace).toInt();
   }
 
-  int DoOTAUpdate(const char *URL, ActionType Action) {
-
+  int DoOTAUpdate(WiFiClientSecure *client,const char *URL, ActionType Action) {
+    Serial.println("starting ota update");
     String mainURL(URL);
+    Serial.print("loading new URL:");
+    Serial.println(URL);
     HttpResult result = followRedirects(client, mainURL, 5);
     //Forces redirect following, enables OTA updates from more online sources, like GitHub releases.
 
@@ -293,7 +292,7 @@ public:
       delay(1);
     }
     client->stop();
-
+    Serial.println();
     // Parse response
     JsonDocument doc;
 
@@ -312,7 +311,7 @@ public:
       }
       return JSON_PROBLEM;
     }
-
+    Serial.println(downloadedJson);
     String _Board = Board.isEmpty() ? ARDUINO_BOARD : Board;
     String _Device = Device.isEmpty() ? WiFi.macAddress() : Device;
     String _Config = Config.isEmpty() ? "" : Config;
@@ -335,10 +334,12 @@ public:
       String CDevice = config["Device"].isNull() ? "" : (const char *)config["Device"];
       CVersion = config["Version"].isNull() ? "" : (const char *)config["Version"];
       String CConfig = config["Config"].isNull() ? "" : (const char *)config["Config"];
+      Serial.println("Stepping...");
 
       if ((CBoard.isEmpty() || CBoard == _Board) && (CDevice.isEmpty() || CDevice == _Device) && (CConfig.isEmpty() || CConfig == _Config)) {
         if (CVersion.isEmpty() || CVersion > String(CurrentVersion) || (DowngradesAllowed && CVersion != String(CurrentVersion))) {
-          return Action == DONT_DO_UPDATE ? UPDATE_AVAILABLE : DoOTAUpdate(config["URL"], Action);
+          Serial.println("Doing action");
+          return Action == DONT_DO_UPDATE ? UPDATE_AVAILABLE : DoOTAUpdate(client,config["URL"], Action);
         }
         foundProfile = true;
       }

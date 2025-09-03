@@ -211,10 +211,15 @@ void ota_update() {
     PopupResult result = PopupManager::show(config);
     PopupResult popupResult = PopupManager::update();
     menu.loop();
+    
+    //free memory
+    entry_jpeg.close();
+    root.close();
 
     WiFiClientSecure client;
     client.setInsecure();  // Skip certificate check
 
+    ota.EnableSerialDebug();
     int ret = ota.CheckForOTAUpdate(&client, JSON_URL, version.c_str(), ESP32OTAPull::UPDATE_AND_BOOT);
     Serial.printf("CheckForOTAUpdate returned %d (%s)\n\n", ret, errtext(ret));
 
@@ -228,7 +233,8 @@ void ota_update() {
     result = PopupManager::show(config);
     popupResult = PopupManager::update();
     menu.loop();
-
+    delay(1000);
+    ESP.restart();
 
   } else {
     PopupConfig config;
@@ -243,6 +249,7 @@ void ota_update() {
     PopupResult popupResult = PopupManager::update();
     menu.loop();
   }
+
 }
 
 void dark_intensity_sample() {

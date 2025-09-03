@@ -27,11 +27,6 @@ void setup() {
   WiFiClientSecure client;
   client.setInsecure(); // Skip certificate check
 
-  String url = "https://github.com/thesunRider/Pragview/releases/download/binary_release/config.json";
-  HttpResult result = followRedirects(client, url, 5);
-
-  Serial.printf("\nFinal Response Code: %d\n", result.responseCode);
-  Serial.printf("Content Length: %u bytes\n", result.contentLength);
   ota.EnableSerialDebug();
 
   int ret = ota.CheckForOTAUpdate(&client, JSON_URL, version.c_str(), ESP32OTAPull::UPDATE_BUT_NO_BOOT);
