@@ -14,7 +14,7 @@
 #include "WatchedVar.h"
 #include "ESP32OTAPull.h"
 #include <WiFiClientSecure.h>
-
+#include <IniFile.h>
 //meunu
 // Static: Network - Connected/Disconnected
 //Wifi - On/Off
@@ -34,7 +34,7 @@
 //Storage capacity: 10GB/16GB Used
 //about
 #define JSON_URL "https://github.com/thesunRider/Pragview/releases/download/binary_release/config.json"  // this is where you'll post your JSON filter file
-String version = "1.5.0";
+String version = "1.6.0";
 
 // Touchscreen pins
 #define XPT2046_IRQ 21   // T_IRQ
@@ -73,8 +73,8 @@ struct tm timeinfo;
 #define TFT_HOR_RES 320
 #define TFT_VER_RES 240
 
-#define DEFAULT_WIFI_NAME "AKPU_2.4GHz"  //"pragview"
-#define DEFAULT_WIFI_PASS "Kingpin007"   //"123456789"
+#define DEFAULT_WIFI_NAME "pragview" //"AKPU_2.4GHz"//"pragview"
+#define DEFAULT_WIFI_PASS "123456789" //"Kingpin007" //"123456789"
 
 FtpServer ftpSrv;
 
@@ -160,6 +160,8 @@ void dark_intensity_sample();
 void ota_update();
 void ota_callback(int offset, int totallength);
 const char *errtext(int code);
+void load_validate_ini();
+void createIniFile(const char* path);
 
 WatchedVar wifi_power_settings(WiFi.getMode() == WIFI_OFF, switch_wifi);
 WatchedVar light_intensity_settings(0, ftp_server_change);
@@ -437,6 +439,69 @@ static int jpegDrawCallback(JPEGDRAW *pDraw) {
   return 1;
 }
 
+void createIniFile(const char* path) {
+  // Check if file exists; remove it first
+  if (SD.exists(path)) {
+    SD.remove(path);
+  }
+
+  File file = SD.open(path, FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to create file");
+    return;
+  }
+
+  // Write some settings in INI format
+  file.println("[Network]");
+  file.println("ssid=nonewifi");
+  file.println("password=123456789");
+
+  file.println("[Display]");
+  file.println("orientation=landscape");
+  file.println("brightness=200");
+
+  file.close();
+  Serial.println("INI file created successfully");
+}
+
+void load_validate_ini(){
+  IniFile ini("/config.ini");
+  if (!ini.open()) {
+    Serial.print("Ini file does not exist");
+    createIniFile("/config.ini");
+  }
+  Serial.println("Ini file exists");
+  const size_t bufferLen = 80;
+  char buffer[bufferLen];
+
+  // Check the file is valid. This can be used to warn if any lines
+  // are longer than the buffer.
+  if (!ini.validate(buffer, bufferLen)) {
+    Serial.print("ini file ");
+    Serial.print(" not valid: ");
+  }
+  
+  // Fetch a value from a key which is present
+  if (ini.getValue("Network", "ssid", buffer, bufferLen)) {
+    Serial.print("section 'network' has an entry 'ssid' with value ");
+    Serial.println(buffer);
+  }
+
+  wifi_configured_ssid = String(buffer);
+  Serial.print("read ssid:");
+  Serial.print(wifi_configured_ssid);
+  Serial.println("-done");
+
+  if (ini.getValue("Network", "password", buffer, bufferLen)) {
+    Serial.print("section 'network' has an entry 'pass' with value ");
+    Serial.println(buffer);
+  }
+
+  wifi_configured_password = String(buffer);
+  Serial.print("read pass:");
+  Serial.print(wifi_configured_password);
+  Serial.println("-done");
+}
 
 void setup() {
   Serial.begin(115200);
@@ -495,6 +560,7 @@ void setup() {
   TOUCH2.setDebounceTime(50);
   TILT_SNS.setDebounceTime(50);
   ftpSrv.begin("pragview", "1234");
+  load_validate_ini();
   check_wifi_devices();
   intialize_menu();
   storage_string.reserve(30);
@@ -503,8 +569,6 @@ void setup() {
   filename.reserve(130);
   ota.EnableSerialDebug();
   ota.SetCallback(ota_callback);
-  //wifi_configured_ssid = ini.gets( "network", "uid" , "none" );
-  //wifi_configured_password = ini.gets( "network", "pass" , "none" );
 
   delay(100);
 }

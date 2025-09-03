@@ -3,7 +3,7 @@
 			{
 			"Board": "ESP32_DEV",
 			"Device": "",
-			"Version": "1.5.0",
+			"Version": "1.6.0",
 			"URL": "https://github.com/thesunRider/Pragview/releases/download/binary_release/main.ino.bin",
 			"Config":""
 			}
