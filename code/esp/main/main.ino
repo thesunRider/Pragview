@@ -34,7 +34,7 @@
 //Storage capacity: 10GB/16GB Used
 //about
 #define JSON_URL "https://github.com/thesunRider/Pragview/releases/download/binary_release/config.json"  // this is where you'll post your JSON filter file
-String version = "1.2.0";
+String version = "1.5.0";
 
 // Touchscreen pins
 #define XPT2046_IRQ 21   // T_IRQ
