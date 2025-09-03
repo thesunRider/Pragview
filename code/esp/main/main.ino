@@ -13,6 +13,7 @@
 #include <SimpleTimer.h>
 #include "WatchedVar.h"
 #include "ESP32OTAPull.h"
+#include <WiFiClientSecure.h>
 
 //meunu
 // Static: Network - Connected/Disconnected
@@ -162,7 +163,7 @@ const char *errtext(int code);
 
 WatchedVar wifi_power_settings(WiFi.getMode() == WIFI_OFF, switch_wifi);
 WatchedVar light_intensity_settings(0, ftp_server_change);
-
+WiFiClientSecure client;
 
 void ota_callback(int offset, int totallength) {
   Serial.printf("Updating %d of %d (%02d%%)...\n", offset, totallength, 100 * offset / totallength);
@@ -212,7 +213,7 @@ void ota_update() {
     PopupResult popupResult = PopupManager::update();
     menu.loop();
 
-    int ret = ota.CheckForOTAUpdate(JSON_URL, version.c_str(),ESP32OTAPull::UPDATE_AND_BOOT);
+    int ret = ota.CheckForOTAUpdate(&client,JSON_URL, version.c_str(),ESP32OTAPull::UPDATE_AND_BOOT);
     Serial.printf("CheckForOTAUpdate returned %d (%s)\n\n", ret, errtext(ret));
 
     config.message = errtext(ret);
@@ -405,7 +406,6 @@ void switch_wifi(int val) {
 
 void ftp_server_change(int v) {
   if (SET_networkscreen.getSettingValue("FTP Server:")) {
-    image_slideshow();
     tft.setCursor(DISPLAY_ORIENTATION == DISPLAY_PORTRAIT ? 20 : 40, 50, 2);
     // Set the font colour to be white with a black background, set text size multiplier to 1
     tft.setTextColor(TFT_WHITE);
@@ -448,13 +448,12 @@ void setup() {
 
 
   delay(120);
-
+  
 
   preferences.begin("pragview", false);
   wifi_configured_ssid = preferences.getString("ssid", "");
   wifi_configured_password = preferences.getString("password", "");
   gmtOffset_sec = preferences.getUInt("gmtoff", 0);
-  daylightOffset_sec = preferences.getUInt("dayoff", 3600);  //daylight offsetinsecs
 
   digitalWrite(LED_PIN, HIGH);
 
@@ -493,8 +492,12 @@ void setup() {
   root = SD.open("/");
   root.rewindDirectory();
   filename.reserve(130);
-
+  ota.EnableSerialDebug();
   ota.SetCallback(ota_callback);
+  client.setInsecure(); // Skip certificate check
+  //wifi_configured_ssid = ini.gets( "network", "uid" , "none" );
+  //wifi_configured_password = ini.gets( "network", "pass" , "none" );
+
   delay(100);
 }
 
@@ -632,6 +635,7 @@ bool check_wifi_devices() {
         if (!getLocalTime(&timeinfo)) {
           Serial.println("Failed to obtain time");
         }
+       
         return true;  // return without shutting off wifi
       }
     }
@@ -683,12 +687,12 @@ void loop() {
 
   if (return_home) {
     //just exited menu
+    image_slideshow();
     ftp_server_change(0);
     Serial.println("Exited menu");
     return_home = false;
     browsing_menu = false;
-    slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") * 1000);
-    image_slideshow();
+    slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") * 1000); 
   }
 
   if (TOUCH1.getState() && TOUCH2.getState() && !browsing_menu) {

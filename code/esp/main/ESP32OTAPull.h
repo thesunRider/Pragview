@@ -29,11 +29,15 @@ SOFTWARE.
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Update.h>
-#include <WiFiClientSecure.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
 class ESP32OTAPull {
 public:
+  struct HttpResult {
+    int responseCode;
+    size_t contentLength;
+  };
   enum ActionType { DONT_DO_UPDATE,
                     UPDATE_BUT_NO_BOOT,
                     UPDATE_AND_BOOT };
@@ -57,66 +61,103 @@ private:
   String CVersion = "";
   bool DowngradesAllowed = false;
   bool SerialDebug = false;
+  WiFiClientSecure *client;
 
+  HttpResult followRedirects(WiFiClientSecure *client, String url, int maxRedirects) {
+    HttpResult result = { 0, 0 };
 
-  bool httpGetFollowRedirects(HTTPClient *http,String url) {
-    WiFiClientSecure client; 
-  client.setInsecure();  // Allow self-signed certificates (optional)
-
-    const int maxRedirects = 10;
-    int redirectCount = 0;
-
-    while (redirectCount < maxRedirects) {
-       if (url.startsWith("https")) {
-      http->begin(client, url);
-    } else {
-      http->begin(url);
-    }
-      
-
-      int httpCode = http->GET();
-      if (httpCode > 0) {
-        Serial.printf("HTTP Code: %d from %s\n", httpCode, url.c_str());
-
-        if (httpCode == HTTP_CODE_OK) {
-          return true;
-        } else if (httpCode == HTTP_CODE_MOVED_PERMANENTLY || httpCode == HTTP_CODE_FOUND) {
-          // Follow redirect
-          String newUrl = http->header("Location");
-          if (newUrl.length() == 0) {
-            Serial.println("No Location header found!");
-            break;
-          }
-          Serial.println("Redirecting to: " + newUrl);
-          url = newUrl;
-          http->end();
-          redirectCount++;
-          continue;
-        } else {
-          Serial.printf("Unhandled HTTP code: %d\n", httpCode);
-          break;
-        }
-      } else {
-        Serial.printf("Request failed: %s\n", http->errorToString(httpCode).c_str());
-        break;
+    for (int i = 0; i < maxRedirects; i++) {
+      String host, path;
+      int port;
+      if (!parseURL(url, host, path, port)) {
+        Serial.println("Invalid URL: " + url);
+        result.responseCode = -1;
+        return result;
       }
 
-      http->end();
+      Serial.println("Connecting to: " + host);
+      if (!client->connect(host.c_str(), port)) {
+        Serial.println("Connection failed");
+        result.responseCode = -2;
+        return result;
+      }
+
+      // Send request
+      client->print(String("GET ") + path + " HTTP/1.1\r\n" + "Host: " + host + "\r\n" + "User-Agent: ESP32\r\n" + "Connection: close\r\n\r\n");
+
+      // Read status line
+      String statusLine = client->readStringUntil('\n');
+      Serial.println(statusLine);
+      int statusCode = parseStatusCode(statusLine);
+
+      // Read headers
+      String location = "";
+      size_t contentLength = 0;
+      while (true) {
+        String line = client->readStringUntil('\n');
+        if (line == "\r") break;  // End of headers
+        Serial.println(line);
+        if (line.startsWith("Location: ")) {
+          location = line.substring(10);
+          location.trim();
+        }
+        if (line.startsWith("Content-Length: ")) {
+          contentLength = line.substring(16).toInt();
+        }
+      }
+
+      // If redirect, follow new URL
+      if (statusCode >= 300 && statusCode < 400 && location.length() > 0) {
+        Serial.println("Redirecting to: " + location);
+        url = location;
+        client->stop();
+        continue;
+      }
+
+      // Final response
+      result.responseCode = statusCode;
+      result.contentLength = contentLength;
+
+      // Print body (stream)
+      Serial.println("Body:");
+      while (client->available()) {
+        Serial.write(client->read());
+      }
+
+      break;
     }
 
-    Serial.println("Max redirects reached or error occurred");
-    return false;
+    return result;
   }
 
 
+  bool parseURL(const String &url, String &host, String &path, int &port) {
+    if (!url.startsWith("http")) return false;
+    int schemeEnd = url.indexOf("://");
+    int pathStart = url.indexOf('/', schemeEnd + 3);
+    host = url.substring(schemeEnd + 3, pathStart);
+    path = url.substring(pathStart);
+    port = url.startsWith("https") ? 443 : 80;
+    return true;
+  }
+
+  int parseStatusCode(const String &statusLine) {
+    int firstSpace = statusLine.indexOf(' ');
+    int secondSpace = statusLine.indexOf(' ', firstSpace + 1);
+    return statusLine.substring(firstSpace + 1, secondSpace).toInt();
+  }
+
   int DoOTAUpdate(const char *URL, ActionType Action) {
-    HTTPClient http;
-    http.useHTTP10(true);
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);  //Forces redirect following, enables OTA updates from more online sources, like GitHub releases.
-    
+
+    String mainURL(URL);
+    HttpResult result = followRedirects(client, mainURL, 5);
+    //Forces redirect following, enables OTA updates from more online sources, like GitHub releases.
+
     // Send HTTP GET request
-    if (httpGetFollowRedirects(&http,URL)) {
-      int totalLength = http.getSize();
+    int httpResponseCode = result.responseCode;
+
+    if (httpResponseCode == 200) {
+      int totalLength = result.contentLength;
 
       // this is required to start firmware update process
       if (!Update.begin(UPDATE_SIZE_UNKNOWN))
@@ -126,11 +167,11 @@ private:
       uint8_t buff[1280] = { 0 };
 
       // get tcp stream
-      WiFiClient *stream = http.getStreamPtr();
+      WiFiClient *stream = client;
 
       // read all data from server
       int offset = 0;
-      while (http.connected() && offset < totalLength) {
+      while (offset < totalLength) {
         size_t sizeAvail = stream->available();
         if (sizeAvail > 0) {
           size_t bytes_to_read = min(sizeAvail, sizeof(buff));
@@ -163,8 +204,7 @@ private:
       return WRITE_ERROR;
     }
 
-    http.end();
-    return 0;
+    return httpResponseCode;
   }
 
 public:
@@ -224,25 +264,32 @@ public:
   /// @param CurrentVersion The version # of the current (i.e. to be replaced) sketch
   /// @param ActionType The action to be performed.  May be any of DONT_DO_UPDATE, UPDATE_BUT_NO_BOOT, UPDATE_AND_BOOT (default)
   /// @return ErrorCode or HTTP failure code (see enum above)
-  int CheckForOTAUpdate(const char *JSON_URL, const char *CurrentVersion, ActionType Action = UPDATE_AND_BOOT) {
+  int CheckForOTAUpdate(WifiClientSecure *client,const char *JSON_URL, const char *CurrentVersion, ActionType Action = UPDATE_AND_BOOT) {
     CurrentVersion = CurrentVersion == NULL ? "" : CurrentVersion;
 
-    HTTPClient http;
-    http.useHTTP10(true);  // Avoid issues with HTTP Chunked Responses
-    http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);  //Forces redirect following, enables OTA updates from more online sources, like GitHub releases.
+    String mainURL(JSON_URL);
+    HttpResult result = followRedirects(client, mainURL, 5);
 
+    // Send HTTP GET request
+    int httpResponseCode = result.responseCode;
 
     if (SerialDebug) {
       Serial.print("Got HTTP Response: ");
-      //Serial.println(httpResponseCode, DEC);
+      Serial.println(httpResponseCode, DEC);
     }
 
-    if (!httpGetFollowRedirects(&http,JSON_URL)) {
-      return 0;
+    if (httpResponseCode != 200) {
+      return httpResponseCode > 0 ? httpResponseCode : HTTP_FAILED;
     }
 
-    // Get the raw and the decoded stream
-    Stream &rawStream = http.getStream();
+    Serial.println("Downloading JSON...");
+    String downloadedJson;
+    downloadedJson.reserve(2000);
+
+    while (client.available()) {
+      downloadedJson += (char)client.read();  // append each byte
+    }
+
 
     // Parse response
     JsonDocument doc;
@@ -252,10 +299,8 @@ public:
     //DeserializationError error = deserializeJson(doc, loggingStream);
 
     // Parse JSON object
-    DeserializationError error = deserializeJson(doc, rawStream);
+    DeserializationError error = deserializeJson(doc, downloadedJson.c_str());
 
-    // Disconnect
-    http.end();
 
     if (error) {
       if (SerialDebug) {
