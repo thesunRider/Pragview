@@ -4,7 +4,7 @@
 			"Board": "ESP32_DEV",
 			"Device": "24:63:28:AD:FF:04",
 			"Version": "1.5",
-			"URL": "https://example.com/myimages/Basic-OTA-Example.bin"
+			"URL": "https://github.com/thesunRider/Pragview/releases/download/binary_release/main.ino.bin"
 			}
 		]
 	}

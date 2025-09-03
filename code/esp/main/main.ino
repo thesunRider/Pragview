@@ -163,7 +163,6 @@ const char *errtext(int code);
 
 WatchedVar wifi_power_settings(WiFi.getMode() == WIFI_OFF, switch_wifi);
 WatchedVar light_intensity_settings(0, ftp_server_change);
-WiFiClientSecure client;
 
 void ota_callback(int offset, int totallength) {
   Serial.printf("Updating %d of %d (%02d%%)...\n", offset, totallength, 100 * offset / totallength);
@@ -213,7 +212,10 @@ void ota_update() {
     PopupResult popupResult = PopupManager::update();
     menu.loop();
 
-    int ret = ota.CheckForOTAUpdate(&client,JSON_URL, version.c_str(),ESP32OTAPull::UPDATE_AND_BOOT);
+    WiFiClientSecure client;
+    client.setInsecure();  // Skip certificate check
+
+    int ret = ota.CheckForOTAUpdate(&client, JSON_URL, version.c_str(), ESP32OTAPull::UPDATE_AND_BOOT);
     Serial.printf("CheckForOTAUpdate returned %d (%s)\n\n", ret, errtext(ret));
 
     config.message = errtext(ret);
@@ -448,7 +450,7 @@ void setup() {
 
 
   delay(120);
-  
+
 
   preferences.begin("pragview", false);
   wifi_configured_ssid = preferences.getString("ssid", "");
@@ -494,7 +496,6 @@ void setup() {
   filename.reserve(130);
   ota.EnableSerialDebug();
   ota.SetCallback(ota_callback);
-  client.setInsecure(); // Skip certificate check
   //wifi_configured_ssid = ini.gets( "network", "uid" , "none" );
   //wifi_configured_password = ini.gets( "network", "pass" , "none" );
 
@@ -635,7 +636,7 @@ bool check_wifi_devices() {
         if (!getLocalTime(&timeinfo)) {
           Serial.println("Failed to obtain time");
         }
-       
+
         return true;  // return without shutting off wifi
       }
     }
@@ -692,7 +693,7 @@ void loop() {
     Serial.println("Exited menu");
     return_home = false;
     browsing_menu = false;
-    slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") * 1000); 
+    slideshow_tmr.setInterval(SET_devicescreen.getSettingValue("Photo Duration") * 1000);
   }
 
   if (TOUCH1.getState() && TOUCH2.getState() && !browsing_menu) {

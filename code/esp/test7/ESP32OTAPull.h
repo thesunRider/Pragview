@@ -121,10 +121,7 @@ private:
       result.contentLength = contentLength;
 
       // Print body (stream)
-      Serial.println("Body:");
-      while (client->available()) {
-        Serial.write(client->read());
-      }
+      Serial.println("Fin main :");
 
       break;
     }
@@ -293,7 +290,7 @@ public:
       delay(1);
     }
     client->stop();
-
+    Serial.println();
     // Parse response
     JsonDocument doc;
 
