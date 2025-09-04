@@ -34,7 +34,7 @@
 //Storage capacity: 10GB/16GB Used
 //about
 #define JSON_URL "https://github.com/thesunRider/Pragview/releases/download/binary_release/config.json"  // this is where you'll post your JSON filter file
-String version = "1.6.0";
+String version = "1.8.0";
 
 // Touchscreen pins
 #define XPT2046_IRQ 21   // T_IRQ
@@ -73,8 +73,8 @@ struct tm timeinfo;
 #define TFT_HOR_RES 320
 #define TFT_VER_RES 240
 
-#define DEFAULT_WIFI_NAME "pragview" //"AKPU_2.4GHz"//"pragview"
-#define DEFAULT_WIFI_PASS "123456789" //"Kingpin007" //"123456789"
+#define DEFAULT_WIFI_NAME "pragview"   //"AKPU_2.4GHz"//"pragview"
+#define DEFAULT_WIFI_PASS "123456789"  //"Kingpin007" //"123456789"
 
 FtpServer ftpSrv;
 
@@ -161,7 +161,7 @@ void ota_update();
 void ota_callback(int offset, int totallength);
 const char *errtext(int code);
 void load_validate_ini();
-void createIniFile(const char* path);
+void createIniFile(const char *path);
 
 WatchedVar wifi_power_settings(WiFi.getMode() == WIFI_OFF, switch_wifi);
 WatchedVar light_intensity_settings(0, ftp_server_change);
@@ -170,6 +170,13 @@ void ota_callback(int offset, int totallength) {
   Serial.printf("Updating %d of %d (%02d%%)...\n", offset, totallength, 100 * offset / totallength);
   static int status = LOW;
   status = status == LOW && offset < totallength ? HIGH : LOW;
+
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextSize(1);
+  tft.setCursor(255, 120, 2);
+  tft.print(100 * offset / totallength);
+  tft.print("%");
+
   digitalWrite(LED_PIN, status);
 }
 
@@ -213,8 +220,9 @@ void ota_update() {
     PopupResult result = PopupManager::show(config);
     PopupResult popupResult = PopupManager::update();
     menu.loop();
-    
+
     //free memory
+    canvas.deleteSprite();
     entry_jpeg.close();
     root.close();
 
@@ -222,20 +230,16 @@ void ota_update() {
     client.setInsecure();  // Skip certificate check
 
     ota.EnableSerialDebug();
-    int ret = ota.CheckForOTAUpdate(&client, JSON_URL, version.c_str(), ESP32OTAPull::UPDATE_AND_BOOT);
+    int ret = ota.CheckForOTAUpdate(&client, JSON_URL, "0.0.0", ESP32OTAPull::UPDATE_AND_BOOT);  //update no matter what
     Serial.printf("CheckForOTAUpdate returned %d (%s)\n\n", ret, errtext(ret));
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(1);
+    tft.setCursor(125, 120, 2);
+    tft.println(errtext(ret));
+    tft.println("OTA Update Error");
 
-    config.message = errtext(ret);
-    config.title = "OTA Update Error";
-    config.type = PopupType::ERROR;
-    config.autoClose = true;
-    config.autoCloseDelay = 5000;  // 5 seconds
-    config.showButtons = false;
-    config.showCancelButton = false;
-    result = PopupManager::show(config);
-    popupResult = PopupManager::update();
-    menu.loop();
-    delay(1000);
+    delay(2000);
     ESP.restart();
 
   } else {
@@ -251,7 +255,6 @@ void ota_update() {
     PopupResult popupResult = PopupManager::update();
     menu.loop();
   }
-
 }
 
 void dark_intensity_sample() {
@@ -439,7 +442,7 @@ static int jpegDrawCallback(JPEGDRAW *pDraw) {
   return 1;
 }
 
-void createIniFile(const char* path) {
+void createIniFile(const char *path) {
   // Check if file exists; remove it first
   if (SD.exists(path)) {
     SD.remove(path);
@@ -464,7 +467,7 @@ void createIniFile(const char* path) {
   Serial.println("INI file created successfully");
 }
 
-void load_validate_ini(){
+void load_validate_ini() {
   IniFile ini("/config.ini");
   if (!ini.open()) {
     Serial.print("Ini file does not exist");
@@ -480,7 +483,7 @@ void load_validate_ini(){
     Serial.print("ini file ");
     Serial.print(" not valid: ");
   }
-  
+
   // Fetch a value from a key which is present
   if (ini.getValue("Network", "ssid", buffer, bufferLen)) {
     Serial.print("section 'network' has an entry 'ssid' with value ");
@@ -501,6 +504,7 @@ void load_validate_ini(){
   Serial.print("read pass:");
   Serial.print(wifi_configured_password);
   Serial.println("-done");
+  ini.close();
 }
 
 void setup() {
