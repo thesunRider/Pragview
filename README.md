@@ -1,6 +1,6 @@
 # Pragview
 
-**Pragview** is a simple yet powerful digital photo frame built on the **ESP32** platform. It features **SD card storage**, **Wi-Fi connectivity**, **OTA updates**, multiple **sensor integrations**, and a user-friendly **2.8" touchscreen display**. Pragview is designed to be lightweight yet feature-rich, making it easy to upload, display, and manage your photo memories.\\
+**Pragview** is a simple yet powerful digital photo frame built on the **ESP32** platform. It features **SD card storage**, **Wi-Fi connectivity**, **OTA updates**, multiple **sensor integrations**, and a user-friendly **2.8" touchscreen display**. Pragview is designed to be lightweight yet feature-rich, making it easy to upload, display, and manage your photo memories.\
 
 <img width="400" height="300" alt="image" src="https://github.com/user-attachments/assets/88753f2f-5d62-491a-8909-2a2479766580" />
 <img width="400" height="300" alt="image" src="https://github.com/user-attachments/assets/aaf4d748-9273-4c7e-a051-74a666170ec3" />
